@@ -18,12 +18,29 @@
 #include "server.h"
 #include "signals.h"
 
-static sig_atomic_t signal_pending;
+static volatile sig_atomic_t signal_pending;
+
+// Self-pipe written by signal_handler, so a signal arriving between the event loop's
+// signal_pending check and select() still wakes select(). Created once, kept across restarts.
+int signal_pipe[2] = {-1, -1};
 
 void signal_handler(int sig)
 {
     // signal handler is light as it should be
     signal_pending = sig;
+    if (signal_pipe[1] >= 0) {
+        int savedErrno = errno;
+        ssize_t unused = write(signal_pipe[1], "x", 1);
+        (void)unused;
+        errno = savedErrno;
+    }
+}
+
+void drain_signal_pipe()
+{
+    char buffer[16];
+    while (signal_pipe[0] >= 0 && read(signal_pipe[0], buffer, sizeof(buffer)) > 0) {
+    }
 }
 
 void reset_signals()
@@ -43,6 +60,21 @@ void init_signals()
     signal_pending = 0;
 
     reset_signals();
+
+    if (signal_pipe[0] < 0) {
+        int fds[2];
+        if (pipe(fds) != 0) {
+            fprintf(stderr, "tint2: Creating signal pipe failed.\n");
+        } else {
+            for (int i = 0; i < 2; i++) {
+                fcntl(fds[i], F_SETFL, O_NONBLOCK | fcntl(fds[i], F_GETFL));
+                fcntl(fds[i], F_SETFD, FD_CLOEXEC);
+            }
+            signal_pipe[0] = fds[0];
+            signal_pipe[1] = fds[1];
+        }
+    }
+    drain_signal_pipe();
 
     struct sigaction sa_chld = {.sa_handler = SIG_IGN};
     sigaction(SIGCHLD, &sa_chld, 0);

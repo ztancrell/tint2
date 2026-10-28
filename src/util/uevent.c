@@ -127,6 +127,9 @@ static struct uevent *uevent_new(char *buffer, int size)
 
 void uevent_register_notifier(struct uevent_notify *nb)
 {
+    // Only the battery needs uevents: open the netlink socket on first use
+    if (uevent_fd < 0)
+        uevent_init();
     notifiers = g_list_append(notifiers, nb);
 }
 
@@ -182,7 +185,7 @@ int uevent_init()
     nls.nl_groups = -1;
 
     /* open socket */
-    uevent_fd = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_KOBJECT_UEVENT);
+    uevent_fd = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_KOBJECT_UEVENT);
     if (uevent_fd < 0) {
         fprintf(stderr, "tint2: Error: socket open failed\n");
         return -1;
@@ -191,6 +194,8 @@ int uevent_init()
     /* Listen to netlink socket */
     if (bind(uevent_fd, (void *)&nls, sizeof(struct sockaddr_nl))) {
         fprintf(stderr, "tint2: Bind failed\n");
+        close(uevent_fd);
+        uevent_fd = -1;
         return -1;
     }
 
@@ -203,6 +208,7 @@ void uevent_cleanup()
 {
     if (uevent_fd >= 0)
         close(uevent_fd);
+    uevent_fd = -1;
 }
 
 #endif

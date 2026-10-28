@@ -8,6 +8,9 @@ int get_signal_pending();
 void reset_signals();
 
 void handle_sigchld_events();
+void drain_signal_pipe();
+
+extern int signal_pipe[2];
 
 extern int sigchild_pipe_valid;
 extern int sigchild_pipe[2];

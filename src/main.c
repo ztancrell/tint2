@@ -594,6 +594,10 @@ void prepare_fd_set(fd_set *set, int *max_fd)
     FD_ZERO(set);
     FD_SET(server.x11_fd, set);
     *max_fd = server.x11_fd;
+    if (signal_pipe[0] >= 0) {
+        FD_SET(signal_pipe[0], set);
+        *max_fd = MAX(*max_fd, signal_pipe[0]);
+    }
     if (sigchild_pipe_valid) {
         FD_SET(sigchild_pipe[0], set);
         *max_fd = MAX(*max_fd, sigchild_pipe[0]);
@@ -611,7 +615,7 @@ void prepare_fd_set(fd_set *set, int *max_fd)
             *max_fd = MAX(*max_fd, fd);
         }
     }
-    if (uevent_fd > 0) {
+    if (uevent_fd >= 0) {
         FD_SET(uevent_fd, set);
         *max_fd = MAX(*max_fd, uevent_fd);
     }
@@ -759,14 +763,23 @@ void run_tint2_event_loop()
         int max_fd;
         prepare_fd_set(&fds, &max_fd);
 
-        // Wait for an event and handle it
+        // Wait for an event and handle it. With X events already queued, only poll the other fds.
         ts_event_read = 0;
-        if (XPending(server.display) > 0 || select(max_fd + 1, &fds, 0, 0, get_duration_to_next_timer_expiration()) >= 0) {
+        gboolean x_pending = XPending(server.display) > 0;
+        struct timeval no_wait = {0, 0};
+        int ready = select(max_fd + 1, &fds, 0, 0, x_pending ? &no_wait : get_duration_to_next_timer_expiration());
+        if (ready < 0)
+            FD_ZERO(&fds);
+        if (x_pending || ready >= 0) {
 #ifdef HAVE_TRACING
             start_tracing((void*)run_tint2_event_loop);
 #endif
-            uevent_handler();
-            handle_sigchld_events();
+            if (signal_pipe[0] >= 0 && FD_ISSET(signal_pipe[0], &fds))
+                drain_signal_pipe();
+            if (uevent_fd >= 0 && FD_ISSET(uevent_fd, &fds))
+                uevent_handler();
+            if (sigchild_pipe_valid && FD_ISSET(sigchild_pipe[0], &fds))
+                handle_sigchld_events();
             handle_execp_events();
             handle_x_events();
         }
@@ -786,7 +799,6 @@ void tint2(int argc, char **argv, gboolean *restart)
     }
 
     dnd_init();
-    uevent_init();
     run_tint2_event_loop();
 
     if (get_signal_pending()) {
