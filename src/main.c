@@ -194,6 +194,7 @@ void handle_event_property_notify(XEvent *e)
                             Task *task = l->data;
                             task_update_desktop(task);
                         }
+                        g_list_free(need_update);
                     }
                 }
             }

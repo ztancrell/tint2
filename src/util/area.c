@@ -1272,7 +1272,6 @@ void compute_control_point(GradientInstance *gi, ControlPoint *control, double *
 void update_gradient(GradientInstance *gi)
 {
     if (gi->pattern) {
-        return;
         cairo_pattern_destroy(gi->pattern);
         gi->pattern = NULL;
     }

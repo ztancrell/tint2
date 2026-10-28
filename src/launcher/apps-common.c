@@ -60,21 +60,17 @@ void expand_exec(DesktopEntry *entry, const char *path)
     // %c -> Name
     // %k -> path
     if (entry->exec) {
-        size_t buf_size = strlen(entry->exec) + (entry->name ? strlen(entry->name) : 1) +
-                (entry->icon ? strlen(entry->icon) : 1) + 100;
-        char *exec2 = calloc(buf_size, 1);
-        char *p, *q;
+        GString *exec2 = g_string_new(NULL);
         // p will never point to an escaped char
-        for (p = entry->exec, q = exec2; *p; p++, q++) {
-            *q = *p; // Copy
+        for (const char *p = entry->exec; *p; p++) {
             if (*p == '\\') {
-                p++, q++;
-                // Copy the escaped char
-                if (*p == '%') // For % we delete the backslash, i.e. write % over it
-                    q--;
-                *q = *p;
+                p++;
+                // Copy the escaped char; for % we delete the backslash
+                if (*p != '%')
+                    g_string_append_c(exec2, '\\');
                 if (!*p)
                     break;
+                g_string_append_c(exec2, *p);
                 continue;
             }
             if (*p == '%') {
@@ -82,41 +78,21 @@ void expand_exec(DesktopEntry *entry, const char *path)
                 if (!*p)
                     break;
                 if (*p == 'i' && entry->icon != NULL) {
-                    snprintf(q, buf_size, "--icon '%s'", entry->icon);
-                    char *old = q;
-                    q += strlen("--icon ''");
-                    q += strlen(entry->icon);
-                    buf_size -= (size_t)(q - old);
-                    q--; // To balance the q++ in the for
-                } else if (*p == 'c' && entry->name != NULL) {
-                    snprintf(q, buf_size, "'%s'", entry->name);
-                    char *old = q;
-                    q += strlen("''");
-                    q += strlen(entry->name);
-                    buf_size -= (size_t)(q - old);
-                    q--; // To balance the q++ in the for
+                    g_string_append_printf(exec2, "--icon '%s'", entry->icon);
                 } else if (*p == 'c') {
-                    snprintf(q, buf_size, "'%s'", path);
-                    char *old = q;
-                    q += strlen("''");
-                    q += strlen(path);
-                    buf_size -= (size_t)(q - old);
-                    q--; // To balance the q++ in the for
+                    g_string_append_printf(exec2, "'%s'", entry->name ? entry->name : path);
                 } else if (*p == 'f' || *p == 'F') {
-                    snprintf(q, buf_size, "%c%c", '%', *p);
-                    q += 2;
-                    buf_size -= 2;
-                    q--; // To balance the q++ in the for
-                } else {
-                    // We don't care about other expansions
-                    q--; // Delete the last % from q
+                    g_string_append_c(exec2, '%');
+                    g_string_append_c(exec2, *p);
                 }
+                // We don't care about other expansions
                 continue;
             }
+            g_string_append_c(exec2, *p);
         }
-        *q = '\0';
         free(entry->exec);
-        entry->exec = exec2;
+        entry->exec = strdup(exec2->str);
+        g_string_free(exec2, TRUE);
     }
 }
 

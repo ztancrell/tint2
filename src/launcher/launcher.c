@@ -362,7 +362,7 @@ int launcher_icon_compute_desired_size(void *obj)
 char *launcher_icon_get_tooltip_text(void *obj)
 {
     LauncherIcon *launcherIcon = (LauncherIcon *)obj;
-    return strdup(launcherIcon->icon_tooltip);
+    return strdup(launcherIcon->icon_tooltip ? launcherIcon->icon_tooltip : "");
 }
 
 void draw_launcher_icon(void *obj, cairo_t *c)
@@ -521,6 +521,8 @@ void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
         if (launcherIcon->icon_name)
             free(launcherIcon->icon_name);
         launcherIcon->icon_name = entry.icon ? strdup(entry.icon) : strdup(DEFAULT_ICON);
+        g_free(launcherIcon->icon_tooltip);
+        launcherIcon->icon_tooltip = NULL;
         if (entry.name) {
             if (entry.generic_name) {
                 launcherIcon->icon_tooltip = g_strdup_printf("%s (%s)", entry.name, entry.generic_name);

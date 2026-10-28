@@ -69,7 +69,7 @@ void toggle_window_maximized(Window win)
 
 gboolean window_is_hidden(Window win)
 {
-    Window window;
+    Window window, parent;
     int count;
 
     Atom *at = server_get_property(win, server.atom._NET_WM_STATE, XA_ATOM, &count);
@@ -78,16 +78,17 @@ gboolean window_is_hidden(Window win)
             XFree(at);
             return TRUE;
         }
-        // do not add transient_for windows if the transient window is already in the taskbar
-        window = win;
-        while (XGetTransientForHint(server.display, window, &window)) {
-            if (get_task_buttons(window)) {
-                XFree(at);
-                return TRUE;
-            }
-        }
     }
     XFree(at);
+
+    // do not add transient_for windows if the transient window is already in the taskbar
+    // Bounded: WM_TRANSIENT_FOR can form a cycle
+    window = win;
+    for (int n = 0; n < 32 && XGetTransientForHint(server.display, window, &parent) && parent && parent != window; n++) {
+        window = parent;
+        if (get_task_buttons(window))
+            return TRUE;
+    }
 
     at = server_get_property(win, server.atom._NET_WM_WINDOW_TYPE, XA_ATOM, &count);
     for (int i = 0; i < count; i++) {

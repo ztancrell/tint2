@@ -522,8 +522,8 @@ void extract_values(const char *str, char **value1, char **value2, char **value3
     *value2 = NULL;
     *value3 = NULL;
     char **tokens = g_strsplit(str, " ", 3);
+    *value1 = strdup(tokens[0] ? tokens[0] : "");
     if (tokens[0]) {
-        *value1 = strdup(tokens[0]);
         if (tokens[1]) {
             *value2 = strdup(tokens[1]);
             if (tokens[2]) {

@@ -510,14 +510,14 @@ void taskbar_refresh_tasklist()
 
     int num_results;
     Window *win = server_get_property(server.root_win, server.atom._NET_CLIENT_LIST, XA_WINDOW, &num_results);
+    if (!win)
+        return;
     Window *sorted = (Window *)calloc(num_results, sizeof(Window));
     memcpy(sorted, win, num_results * sizeof(Window));
     if (taskbar_task_orderings) {
         sort_win_list(sorted, num_results);
         taskbar_clear_orderings();
     }
-    if (!win)
-        return;
 
     GList *win_list = g_hash_table_get_keys(win_to_task);
     for (GList *it = win_list; it; it = it->next) {

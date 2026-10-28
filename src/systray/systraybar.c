@@ -292,9 +292,11 @@ void on_change_systray(void *obj)
     }
 
     TrayWindow *traywin;
-    GSList *l;
+    GSList *l, *next;
     int i;
-    for (i = 1, l = systray.list_icons; l; i++, l = l->next) {
+    // reparent_icon() may remove_icon() and free l, so take next first
+    for (i = 1, l = systray.list_icons; l; i++, l = next) {
+        next = l->next;
         traywin = (TrayWindow *)l->data;
 
         traywin->y = posy;
@@ -398,9 +400,11 @@ void start_net()
 
         fprintf(stderr, RED "tint2: another systray is running, cannot use systray" RESET);
         if (ret == Success && prop) {
-            pid = prop[1] * 256;
-            pid += prop[0];
-            fprintf(stderr, "tint2:  pid=%d", pid);
+            if (actual_format == 32 && nitems > 0) {
+                pid = (int)*(long *)prop;
+                fprintf(stderr, "tint2:  pid=%d", pid);
+            }
+            XFree(prop);
         }
         fprintf(stderr, RESET "\n");
         return;
@@ -648,8 +652,9 @@ gboolean add_icon(Window win)
                                      &bytes_after,
                                      &prop);
         if (ret == Success && prop) {
-            pid = prop[1] * 256;
-            pid += prop[0];
+            if (actual_format == 32 && nitems > 0)
+                pid = (int)*(long *)prop;
+            XFree(prop);
         }
     }
 
@@ -1488,8 +1493,9 @@ void refresh_systray_icons()
     if (systray_profile)
         fprintf(stderr, BLUE "tint2: [%f] %s:%d" RESET "\n", profiling_get_time(), __func__, __LINE__);
     TrayWindow *traywin;
-    GSList *l;
-    for (l = systray.list_icons; l; l = l->next) {
+    GSList *l, *next;
+    for (l = systray.list_icons; l; l = next) {
+        next = l->next;
         traywin = (TrayWindow *)l->data;
         systray_render_icon(traywin);
     }

@@ -262,9 +262,12 @@ static XSettingsList *parse_settings(unsigned char *data, size_t len)
             if (result != XSETTINGS_SUCCESS)
                 goto out;
 
-            pad_len = XSETTINGS_PAD(v_int, 4);
-            if (v_int + 1 == 0 || /* Guard against wrap-around */
-                BYTES_LEFT(&buffer) < pad_len) {
+            if ((size_t)v_int > (size_t)BYTES_LEFT(&buffer)) {
+                result = XSETTINGS_ACCESS;
+                goto out;
+            }
+            pad_len = XSETTINGS_PAD((size_t)v_int, 4);
+            if (BYTES_LEFT(&buffer) < pad_len) {
                 result = XSETTINGS_ACCESS;
                 goto out;
             }

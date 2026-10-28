@@ -345,6 +345,9 @@ void get_monitors()
             num_monitors = 0;
             for (int i = 0; i < res->ncrtc; ++i) {
                 XRRCrtcInfo *crtc_info = XRRGetCrtcInfo(server.display, res, res->crtcs[i]);
+                // Gone during hotplug
+                if (!crtc_info)
+                    continue;
                 // Ignore empty crtc
                 if (!crtc_info->width || !crtc_info->height) {
                     fprintf(stderr, "tint2: xRandr: crtc %d seems disabled\n", i);
@@ -361,8 +364,10 @@ void get_monitors()
                 server.monitors[i_monitor].dpi = 96;
                 for (int j = 0; j < crtc_info->noutput; ++j) {
                     XRROutputInfo *output_info = XRRGetOutputInfo(server.display, res, crtc_info->outputs[j]);
+                    if (!output_info)
+                        continue;
                     server.monitors[i_monitor].names[j] = g_strdup(output_info->name);
-                    server.monitors[i_monitor].primary = crtc_info->outputs[j] == primary_output;
+                    server.monitors[i_monitor].primary |= crtc_info->outputs[j] == primary_output;
                     int dpi = compute_dpi(crtc_info, output_info);
                     if (dpi)
                         server.monitors[i_monitor].dpi = dpi;

@@ -246,6 +246,7 @@ void remove_task(Task *task)
         if (g_tooltip.area == &task2->area)
             tooltip_hide(NULL);
         remove_area((Area *)task2);
+        free_area(&task2->area);
         free(task2);
     }
     g_hash_table_remove(win_to_task, &win);
@@ -262,8 +263,12 @@ gboolean task_update_title(Task *task)
 
     char *name = server_get_property(task->win, server.atom._NET_WM_VISIBLE_NAME, server.atom.UTF8_STRING, 0);
     if (!name || !strlen(name)) {
+        if (name)
+            XFree(name);
         name = server_get_property(task->win, server.atom._NET_WM_NAME, server.atom.UTF8_STRING, 0);
         if (!name || !strlen(name)) {
+            if (name)
+                XFree(name);
             name = server_get_property(task->win, server.atom.WM_NAME, XA_STRING, 0);
         }
     }
@@ -666,8 +671,12 @@ void reset_active_task()
     if (w1) {
         if (!get_task_buttons(w1)) {
             Window w2;
-            while (XGetTransientForHint(server.display, w1, &w2))
+            // Bounded: WM_TRANSIENT_FOR can form a cycle
+            for (int n = 0; n < 32 && XGetTransientForHint(server.display, w1, &w2) && w2 && w2 != w1; n++) {
                 w1 = w2;
+                if (get_task_buttons(w1))
+                    break;
+            }
         }
         set_task_state((active_task = get_task(w1)), TASK_ACTIVE);
     }
