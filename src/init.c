@@ -292,6 +292,7 @@ void cleanup()
     xsettings_client_destroy(xsettings_client);
     xsettings_client = NULL;
 
+    cleanup_text_contexts();
     cleanup_server();
     cleanup_timers();
 

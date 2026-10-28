@@ -922,6 +922,50 @@ void clear_pixmap(Pixmap p, int x, int y, int w, int h)
     XRenderFreePicture(server.display, pict);
 }
 
+static PangoContext *measure_context = NULL;
+static PangoContext *draw_context = NULL;
+
+// Text measurement context, created once. It is made exactly like the per-call contexts it replaces
+// (on an Xlib surface of the panel's screen), so it carries the same Xft font options (antialias,
+// hinting, subpixel order) and measured sizes don't change. Cairo takes those options from the screen,
+// so the root window serves as the surface; nothing is ever drawn on it.
+static PangoContext *get_measure_context(double scale)
+{
+    if (!measure_context) {
+        cairo_surface_t *cs = cairo_xlib_surface_create(server.display,
+                                                        server.root_win,
+                                                        DefaultVisual(server.display, server.screen),
+                                                        1,
+                                                        1);
+        cairo_t *c = cairo_create(cs);
+        measure_context = pango_cairo_create_context(c);
+        cairo_destroy(c);
+        cairo_surface_destroy(cs);
+    }
+    pango_cairo_context_set_resolution(measure_context, 96 * scale);
+    return measure_context;
+}
+
+PangoContext *get_draw_context(cairo_t *c, double scale)
+{
+    if (!draw_context)
+        draw_context = pango_cairo_create_context(c);
+    else
+        pango_cairo_update_context(c, draw_context);
+    pango_cairo_context_set_resolution(draw_context, 96 * scale);
+    return draw_context;
+}
+
+void cleanup_text_contexts()
+{
+    if (measure_context)
+        g_object_unref(measure_context);
+    measure_context = NULL;
+    if (draw_context)
+        g_object_unref(draw_context);
+    draw_context = NULL;
+}
+
 void get_text_size(const PangoFontDescription *font,
                    int *height,
                    int *width,
@@ -940,14 +984,7 @@ void get_text_size(const PangoFontDescription *font,
     available_width = MAX(0, available_width);
     available_height = MAX(0, available_height);
 
-    Pixmap pmap = XCreatePixmap(server.display, server.root_win, available_height, available_width, server.depth);
-    cairo_surface_t *cs =
-        cairo_xlib_surface_create(server.display, pmap, server.visual, available_height, available_width);
-    cairo_t *c = cairo_create(cs);
-
-    PangoContext *context = pango_cairo_create_context(c);
-    pango_cairo_context_set_resolution(context, 96 * scale);
-    PangoLayout *layout = pango_layout_new(context);
+    PangoLayout *layout = pango_layout_new(get_measure_context(scale));
     pango_layout_set_width(layout, available_width * PANGO_SCALE);
     pango_layout_set_height(layout, available_height * PANGO_SCALE);
     pango_layout_set_alignment(layout, alignment);
@@ -964,13 +1001,7 @@ void get_text_size(const PangoFontDescription *font,
     *height = rect.height;
     *width = rect.width;
 
-    // fprintf(stderr, "tint2: dimension : %d - %d\n", rect_ink.height, rect.height);
-
     g_object_unref(layout);
-    g_object_unref(context);
-    cairo_destroy(c);
-    cairo_surface_destroy(cs);
-    XFreePixmap(server.display, pmap);
 }
 
 void get_text_size2(const PangoFontDescription *font,

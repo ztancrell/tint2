@@ -126,6 +126,11 @@ void get_text_size2(const PangoFontDescription *font,
                     gboolean markup,
                     double scale);
 
+// Pango context for drawing text on c, cached across calls. Owned by common.c; don't unref.
+PangoContext *get_draw_context(cairo_t *c, double scale);
+// Frees the cached Pango contexts (they hold font options of the current X display).
+void cleanup_text_contexts();
+
 gboolean layout_set_markup_strip_colors(PangoLayout *layout, const char *markup);
 void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color, PangoLayout *shadow_layout);
 

@@ -970,6 +970,17 @@ void area_compute_text_geometry(Area *area,
         *line2_width = *line2_height = 0;
 }
 
+static int text_area_size_from_geometry(Area *area,
+                                        int line1_height,
+                                        int line1_width,
+                                        int line2_height,
+                                        int line2_width)
+{
+    if (panel_horizontal)
+        return MAX(line1_width, line2_width) + 2 * area->paddingxlr + left_right_border_width(area);
+    return line1_height + line2_height + 2 * area->paddingy + top_bottom_border_width(area);
+}
+
 int text_area_compute_desired_size(Area *area,
                                    const char *line1,
                                    const char *line2,
@@ -986,14 +997,7 @@ int text_area_compute_desired_size(Area *area,
                                &line1_width,
                                &line2_height,
                                &line2_width);
-
-    if (panel_horizontal) {
-        int new_size = MAX(line1_width, line2_width) + 2 * area->paddingxlr + left_right_border_width(area);
-        return new_size;
-    } else {
-        int new_size = line1_height + line2_height + 2 * area->paddingy + top_bottom_border_width(area);
-        return new_size;
-    }
+    return text_area_size_from_geometry(area, line1_height, line1_width, line2_height, line2_width);
 }
 
 gboolean resize_text_area(Area *area,
@@ -1020,11 +1024,7 @@ gboolean resize_text_area(Area *area,
                                &line2_height,
                                &line2_width);
 
-    int new_size = text_area_compute_desired_size(area,
-                                                  line1,
-                                                  line2,
-                                                  line1_font_desc,
-                                                  line2_font_desc);
+    int new_size = text_area_size_from_geometry(area, line1_height, line1_width, line2_height, line2_width);
     if (panel_horizontal) {
         if (new_size != area->width) {
             if (new_size < area->width && abs(new_size - area->width) < 6) {
@@ -1069,9 +1069,7 @@ void draw_text_area(Area *area,
     int inner_w, inner_h;
     area_compute_inner_size(area, &inner_w, &inner_h);
 
-    PangoContext *context = pango_cairo_create_context(c);
-    pango_cairo_context_set_resolution(context, 96 * scale);
-    PangoLayout *layout = pango_layout_new(context);
+    PangoLayout *layout = pango_layout_new(get_draw_context(c, scale));
 
     pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
     pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
@@ -1096,7 +1094,6 @@ void draw_text_area(Area *area,
     }
 
     g_object_unref(layout);
-    g_object_unref(context);
 }
 
 Area *compute_element_area(Area *area, Element element)
