@@ -23,6 +23,7 @@
 #include "strnatcmp.h"
 
 #include <glib.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,7 +106,9 @@ gboolean read_desktop_file_full_path(const char *path, DesktopEntry *entry)
 
     FILE *fp = fopen(path, "rt");
     if (fp == NULL) {
-        fprintf(stderr, "tint2: Could not open file %s\n", path);
+        // Missing is expected while searching the application dirs
+        if (errno != ENOENT)
+            fprintf(stderr, "tint2: Could not open file %s: %s\n", path, strerror(errno));
         return FALSE;
     }
 

@@ -58,9 +58,9 @@ IconThemeWrapper *icon_theme_wrapper;
 Imlib_Image scale_icon(Imlib_Image original, int icon_size);
 void free_icon(Imlib_Image icon);
 void launcher_icon_dump_geometry(void *obj, int indent);
-void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon);
+gboolean launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon);
+static void free_launcher_icon(LauncherIcon *launcherIcon);
 void launcher_reload_icon_image(Launcher *launcher, LauncherIcon *launcherIcon);
-void launcher_reload_hidden_icons(Launcher *launcher);
 void launcher_icon_on_change_layout(void *obj);
 int launcher_compute_desired_size(void *obj);
 
@@ -151,23 +151,27 @@ void cleanup_launcher()
     launcher_enabled = FALSE;
 }
 
+static void free_launcher_icon(LauncherIcon *launcherIcon)
+{
+    if (launcherIcon) {
+        free_icon(launcherIcon->image);
+        free_icon(launcherIcon->image_hover);
+        free_icon(launcherIcon->image_pressed);
+        free(launcherIcon->icon_name);
+        free(launcherIcon->icon_path);
+        free(launcherIcon->cmd);
+        free(launcherIcon->cwd);
+        g_free(launcherIcon->icon_tooltip);
+        free(launcherIcon->config_path);
+    }
+    free(launcherIcon);
+}
+
 void cleanup_launcher_theme(Launcher *launcher)
 {
     free_area(&launcher->area);
-    for (GSList *l = launcher->list_icons; l; l = l->next) {
-        LauncherIcon *launcherIcon = (LauncherIcon *)l->data;
-        if (launcherIcon) {
-            free_icon(launcherIcon->image);
-            free_icon(launcherIcon->image_hover);
-            free_icon(launcherIcon->image_pressed);
-            free(launcherIcon->icon_name);
-            free(launcherIcon->icon_path);
-            free(launcherIcon->cmd);
-            g_free(launcherIcon->icon_tooltip);
-            free(launcherIcon->config_path);
-        }
-        free(launcherIcon);
-    }
+    for (GSList *l = launcher->list_icons; l; l = l->next)
+        free_launcher_icon((LauncherIcon *)l->data);
     g_slist_free(launcher->list_icons);
     launcher->list_icons = NULL;
 }
@@ -445,7 +449,6 @@ void free_icon(Imlib_Image icon)
 void launcher_action(LauncherIcon *icon, XEvent *evt, int x, int y)
 {
     launcher_reload_icon((Launcher *)icon->area.parent, icon);
-    launcher_reload_hidden_icons((Launcher *)icon->area.parent);
 
     if (evt->type == ButtonPress || evt->type == ButtonRelease) {
         GString *cmd = g_string_new(icon->cmd);
@@ -494,18 +497,27 @@ void launcher_load_icons(Launcher *launcher)
         }
         launcherIcon->config_path = strdup(app->data);
         add_area(&launcherIcon->area, (Area *)launcher);
-        launcher->list_icons = g_slist_append(launcher->list_icons, launcherIcon);
         launcherIcon->icon_size = launcher->icon_size;
-        launcher_reload_icon(launcher, launcherIcon);
+        if (!launcher_reload_icon(launcher, launcherIcon)) {
+            // Not installed: drop it for this run instead of keeping a hidden item around
+            fprintf(stderr, "tint2: launcher item %s not found, skipping\n", (char *)app->data);
+            remove_area(&launcherIcon->area);
+            free_area(&launcherIcon->area);
+            free_launcher_icon(launcherIcon);
+            app = g_slist_next(app);
+            continue;
+        }
+        launcher->list_icons = g_slist_append(launcher->list_icons, launcherIcon);
         instantiate_area_gradients(&launcherIcon->area);
         app = g_slist_next(app);
     }
 }
 
-void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
+gboolean launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
 {
     DesktopEntry entry;
-    if (read_desktop_file(launcherIcon->config_path, &entry) && entry.exec) {
+    gboolean found = read_desktop_file(launcherIcon->config_path, &entry) && entry.exec;
+    if (found) {
         schedule_redraw(&launcherIcon->area);
         if (launcherIcon->cmd)
             free(launcherIcon->cmd);
@@ -545,21 +557,7 @@ void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
         hide(&launcherIcon->area);
     }
     free_desktop_entry(&entry);
-}
-
-void launcher_reload_hidden_icons(Launcher *launcher)
-{
-    // Each hidden item is a recursive scan of every applications dir; once a minute is plenty
-    static double last_scan;
-    double now = get_time();
-    if (last_scan && now - last_scan < 60)
-        return;
-    last_scan = now;
-    for (GSList *l = launcher->list_icons; l; l = l->next) {
-        LauncherIcon *launcherIcon = (LauncherIcon *)l->data;
-        if (!launcherIcon->area.on_screen)
-            launcher_reload_icon(launcher, launcherIcon);
-    }
+    return found;
 }
 
 void launcher_reload_icon_image(Launcher *launcher, LauncherIcon *launcherIcon)
