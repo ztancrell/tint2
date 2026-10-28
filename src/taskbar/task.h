@@ -112,5 +112,7 @@ Task *prev_task(Task *task);
 
 void add_urgent(Task *task);
 void del_urgent(Task *task);
+// Adds or removes the task from the urgent list per its _NET_WM_STATE and WM_HINTS
+void task_update_urgency(Task *task);
 
 #endif

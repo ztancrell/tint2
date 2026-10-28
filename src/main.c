@@ -248,8 +248,8 @@ void handle_event_property_notify(XEvent *e)
                 // xfce4 sends _NET_WM_STATE after minimized to tray, so we need to check if window is mapped
                 // if it is mapped and not set as skip_taskbar, we must add it to our task list
                 XWindowAttributes wa;
-                XGetWindowAttributes(server.display, win, &wa);
-                if (wa.map_state == IsViewable && !window_is_skip_taskbar(win)) {
+                if (XGetWindowAttributes(server.display, win, &wa) && wa.map_state == IsViewable &&
+                    !window_is_skip_taskbar(win)) {
                     if ((task = add_task(win)))
                         schedule_panel_redraw();
                 }
@@ -282,9 +282,7 @@ void handle_event_property_notify(XEvent *e)
                 }
                 XFree(atom_state);
             }
-            if (window_is_urgent(win)) {
-                add_urgent(task);
-            }
+            task_update_urgency(task);
             if (window_is_skip_taskbar(win)) {
                 remove_task(task);
                 schedule_panel_redraw();
@@ -311,11 +309,7 @@ void handle_event_property_notify(XEvent *e)
                 task_update_desktop(task);
             }
         } else if (at == server.atom.WM_HINTS) {
-            XWMHints *wmhints = XGetWMHints(server.display, win);
-            if (wmhints && wmhints->flags & XUrgencyHint) {
-                add_urgent(task);
-            }
-            XFree(wmhints);
+            task_update_urgency(task);
             task_update_icon(task);
             schedule_panel_redraw();
         }
@@ -426,6 +420,8 @@ void handle_x_event(XEvent *e)
     case ButtonPress: {
         tooltip_hide(0);
         handle_mouse_press_event(e);
+        if (!panel)
+            break;
         Area *area = find_area_under_mouse(panel, e->xbutton.x, e->xbutton.y);
         if (panel_config.mouse_effects)
             mouse_over(area, TRUE);
@@ -434,6 +430,8 @@ void handle_x_event(XEvent *e)
 
     case ButtonRelease: {
         handle_mouse_release_event(e);
+        if (!panel)
+            break;
         Area *area = find_area_under_mouse(panel, e->xbutton.x, e->xbutton.y);
         if (panel_config.mouse_effects)
             mouse_over(area, FALSE);
@@ -445,6 +443,8 @@ void handle_x_event(XEvent *e)
         if (e->xmotion.state & button_mask)
             handle_mouse_move_event(e);
 
+        if (!panel)
+            break;
         Area *area = find_area_under_mouse(panel, e->xmotion.x, e->xmotion.y);
         if (area->_get_tooltip_text)
             tooltip_trigger_show(area, panel, e);
@@ -545,6 +545,8 @@ void handle_x_event(XEvent *e)
             handle_dnd_enter(&e->xclient);
         } else if (e->xclient.message_type == server.atom.XdndPosition) {
             handle_dnd_position(&e->xclient);
+        } else if (e->xclient.message_type == server.atom.XdndLeave) {
+            handle_dnd_leave(&e->xclient);
         } else if (e->xclient.message_type == server.atom.XdndDrop) {
             handle_dnd_drop(&e->xclient);
         } else if (e->xclient.message_type == server.atom.TINT2_REFRESH_EXECP &&

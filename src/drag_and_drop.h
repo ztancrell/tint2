@@ -16,6 +16,7 @@ void dnd_init();
 
 void handle_dnd_enter(XClientMessageEvent *e);
 void handle_dnd_position(XClientMessageEvent *e);
+void handle_dnd_leave(XClientMessageEvent *e);
 void handle_dnd_drop(XClientMessageEvent *e);
 void handle_dnd_selection_notify(XSelectionEvent *e);
 

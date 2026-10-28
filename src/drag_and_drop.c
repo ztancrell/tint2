@@ -31,6 +31,8 @@ static Atom dnd_selection;
 static Atom dnd_atom;
 static int dnd_sent_request;
 static LauncherIcon *dnd_launcher_icon;
+// Window of the task last activated by dragging over it, so it is activated once per hover
+static Window dnd_activated_win;
 gboolean debug_dnd = FALSE;
 
 gboolean hidden_panel_shown_for_dnd;
@@ -38,10 +40,10 @@ gboolean hidden_panel_shown_for_dnd;
 // This fetches all the data from a property
 struct Property dnd_read_property(Display *disp, Window w, Atom property)
 {
-    Atom actual_type;
-    int actual_format;
-    unsigned long nitems;
-    unsigned long bytes_after;
+    Atom actual_type = None;
+    int actual_format = 0;
+    unsigned long nitems = 0;
+    unsigned long bytes_after = 0;
     unsigned char *ret = 0;
 
     int read_bytes = 1024;
@@ -51,26 +53,34 @@ struct Property dnd_read_property(Display *disp, Window w, Atom property)
     do {
         if (ret != 0)
             XFree(ret);
-        XGetWindowProperty(disp,
-                           w,
-                           property,
-                           0,
-                           read_bytes,
-                           False,
-                           AnyPropertyType,
-                           &actual_type,
-                           &actual_format,
-                           &nitems,
-                           &bytes_after,
-                           &ret);
+        ret = 0;
+        if (XGetWindowProperty(disp,
+                               w,
+                               property,
+                               0,
+                               read_bytes,
+                               False,
+                               AnyPropertyType,
+                               &actual_type,
+                               &actual_format,
+                               &nitems,
+                               &bytes_after,
+                               &ret) != Success) {
+            ret = 0;
+            actual_type = None;
+            actual_format = 0;
+            nitems = 0;
+            break;
+        }
         read_bytes *= 2;
     } while (bytes_after != 0);
 
-    if (debug_dnd)
+    if (debug_dnd) {
         fprintf(stderr, "tint2: DnD %s:%d: Property:\n", __FILE__, __LINE__);
-    fprintf(stderr, "tint2: DnD %s:%d: Actual type: %s\n", __FILE__, __LINE__, GetAtomName(disp, actual_type));
-    fprintf(stderr, "tint2: DnD %s:%d: Actual format: %d\n", __FILE__, __LINE__, actual_format);
-    fprintf(stderr, "tint2: DnD %s:%d: Number of items: %lu\n", __FILE__, __LINE__, nitems);
+        fprintf(stderr, "tint2: DnD %s:%d: Actual type: %s\n", __FILE__, __LINE__, GetAtomName(disp, actual_type));
+        fprintf(stderr, "tint2: DnD %s:%d: Actual format: %d\n", __FILE__, __LINE__, actual_format);
+        fprintf(stderr, "tint2: DnD %s:%d: Number of items: %lu\n", __FILE__, __LINE__, nitems);
+    }
 
     Property p;
     p.data = ret;
@@ -157,12 +167,19 @@ void dnd_init()
     dnd_atom = None;
     dnd_sent_request = 0;
     dnd_launcher_icon = NULL;
+    dnd_activated_win = None;
     hidden_panel_shown_for_dnd = FALSE;
+}
+
+void handle_dnd_leave(XClientMessageEvent *e)
+{
+    dnd_activated_win = None;
 }
 
 void handle_dnd_enter(XClientMessageEvent *e)
 {
     dnd_atom = None;
+    dnd_activated_win = None;
     int more_than_3 = e->data.l[1] & 1;
     dnd_source_window = e->data.l[0];
     dnd_version = (e->data.l[1] >> 24);
@@ -224,10 +241,14 @@ void handle_dnd_position(XClientMessageEvent *e)
     XTranslateCoordinates(server.display, server.root_win, e->window, x, y, &mapX, &mapY, &child);
     Task *task = click_task(panel, mapX, mapY);
     if (task) {
-        if (task->desktop != server.desktop)
-            change_desktop(task->desktop);
-        task_handle_mouse_event(task, TOGGLE);
+        if (task->win != dnd_activated_win) {
+            dnd_activated_win = task->win;
+            if (task->desktop != server.desktop)
+                change_desktop(task->desktop);
+            task_handle_mouse_event(task, TOGGLE);
+        }
     } else {
+        dnd_activated_win = None;
         LauncherIcon *icon = click_launcher_icon(panel, mapX, mapY);
         if (icon) {
             accept = 1;
@@ -265,6 +286,7 @@ void handle_dnd_position(XClientMessageEvent *e)
 
 void handle_dnd_drop(XClientMessageEvent *e)
 {
+    dnd_activated_win = None;
     if (dnd_target_window && dnd_launcher_icon) {
         if (dnd_version >= 1) {
             XConvertSelection(server.display,

@@ -728,9 +728,14 @@ void set_task_state(Task *task, TaskState state)
 
     if (state == TASK_ACTIVE && task->current_state != state) {
         clock_gettime(CLOCK_MONOTONIC, &task->last_activation_time);
-        if (taskbar_sort_method == TASKBAR_SORT_LRU || taskbar_sort_method == TASKBAR_SORT_MRU) {
-            GPtrArray *task_buttons = get_task_buttons(task->win);
-            if (task_buttons) {
+        GPtrArray *task_buttons = get_task_buttons(task->win);
+        if (task_buttons) {
+            // A window on all desktops has a button per taskbar; they all sort by the same time
+            for (int i = 0; i < task_buttons->len; ++i) {
+                Task *task1 = g_ptr_array_index(task_buttons, i);
+                task1->last_activation_time = task->last_activation_time;
+            }
+            if (taskbar_sort_method == TASKBAR_SORT_LRU || taskbar_sort_method == TASKBAR_SORT_MRU) {
                 for (int i = 0; i < task_buttons->len; ++i) {
                     Task *task1 = g_ptr_array_index(task_buttons, i);
                     Taskbar *taskbar = (Taskbar *)task1->area.parent;
@@ -788,6 +793,7 @@ void set_task_state(Task *task, TaskState state)
 
 void blink_urgent(void *arg)
 {
+    gboolean changed = FALSE;
     GSList *urgent_task = urgent_list;
     while (urgent_task) {
         Task *t = urgent_task->data;
@@ -796,10 +802,14 @@ void blink_urgent(void *arg)
                 set_task_state(t, TASK_URGENT);
             else
                 set_task_state(t, window_is_iconified(t->win) ? TASK_ICONIFIED : TASK_NORMAL);
+            changed = TRUE;
         }
         urgent_task = urgent_task->next;
     }
-    schedule_panel_redraw();
+    if (changed)
+        schedule_panel_redraw();
+    else
+        stop_timer(&urgent_timer); // done blinking; add_urgent restarts it
 }
 
 void add_urgent(Task *task)
@@ -813,14 +823,13 @@ void add_urgent(Task *task)
 
     task = get_task(task->win); // always add the first task for the task buttons (omnipresent windows)
     task->urgent_tick = 0;
+    if (!urgent_timer.enabled_)
+        change_timer(&urgent_timer, true, 10, 1000, blink_urgent, 0);
     if (g_slist_find(urgent_list, task))
         return;
 
     // not yet in the list, so we have to add it
     urgent_list = g_slist_prepend(urgent_list, task);
-
-    if (!urgent_timer.enabled_)
-        change_timer(&urgent_timer, true, 10, 1000, blink_urgent, 0);
 
     Panel *panel = task->area.panel;
     if (panel->is_hidden)
@@ -832,6 +841,31 @@ void del_urgent(Task *task)
     urgent_list = g_slist_remove(urgent_list, task);
     if (!urgent_list)
         stop_timer(&urgent_timer);
+}
+
+void task_update_urgency(Task *task)
+{
+    if (!task)
+        return;
+    XWMHints *wmhints = XGetWMHints(server.display, task->win);
+    gboolean urgent = (wmhints && (wmhints->flags & XUrgencyHint)) || window_is_urgent(task->win);
+    if (wmhints)
+        XFree(wmhints);
+    if (urgent) {
+        add_urgent(task);
+        return;
+    }
+    // The application dropped the urgency: stop blinking and restore the normal look
+    task = get_task(task->win);
+    if (!task || !g_slist_find(urgent_list, task))
+        return;
+    del_urgent(task);
+    TaskState state = TASK_NORMAL;
+    if (active_task && active_task->win == task->win)
+        state = TASK_ACTIVE;
+    else if (window_is_iconified(task->win))
+        state = TASK_ICONIFIED;
+    set_task_state(task, state);
 }
 
 void task_handle_mouse_event(Task *task, MouseAction action)
@@ -869,7 +903,7 @@ void task_handle_mouse_event(Task *task, MouseAction action)
         toggle_window_maximized(task->win);
         break;
     case DESKTOP_LEFT: {
-        if (task->desktop == 0)
+        if (task->desktop == ALL_DESKTOPS || task->desktop == 0)
             break;
         int desktop = task->desktop - 1;
         change_window_desktop(task->win, desktop);
@@ -878,7 +912,7 @@ void task_handle_mouse_event(Task *task, MouseAction action)
         break;
     }
     case DESKTOP_RIGHT: {
-        if (task->desktop == server.num_desktops)
+        if (task->desktop == ALL_DESKTOPS || task->desktop >= server.num_desktops - 1)
             break;
         int desktop = task->desktop + 1;
         change_window_desktop(task->win, desktop);

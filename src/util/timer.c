@@ -118,7 +118,7 @@ struct timeval *get_duration_to_next_timer_expiration()
         return NULL;
     }
     long long now = get_time_ms();
-    long long duration = min_expiration_time - now;
+    long long duration = MAX(0, min_expiration_time - now);
     if (debug_timers)
         fprintf(stderr,
                 "tint2: timers: %s: t=%lld, %lld to next timer: %s, %p: %s, expires %lld, period %d\n",

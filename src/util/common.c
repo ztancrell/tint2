@@ -681,7 +681,7 @@ void create_heuristic_mask(DATA32 *data, int w, int h)
     unsigned char *udata = (unsigned char *)data;
     unsigned char b = udata[4 * maskPos];
     unsigned char g = udata[4 * maskPos + 1];
-    unsigned char r = udata[4 * maskPos + 1];
+    unsigned char r = udata[4 * maskPos + 2];
     for (int i = 0; i < h * w; ++i) {
         if (b - udata[0] == 0 && g - udata[1] == 0 && r - udata[2] == 0)
             udata[3] = 0;

@@ -209,7 +209,8 @@ int get_property32(Window win, Atom at, Atom type)
                                 &prop_value);
 
     if (result == Success && prop_value) {
-        data = ((gulong *)prop_value)[0];
+        if (nitems_ret > 0 && format_ret == 32)
+            data = ((gulong *)prop_value)[0];
         XFree(prop_value);
     }
     return data;
@@ -461,14 +462,25 @@ void server_get_number_of_desktops()
     long *work_area_size = server_get_property(server.root_win, server.atom._NET_WORKAREA, XA_CARDINAL, &num_results);
     if (!work_area_size)
         return;
+    if (num_results < 4) {
+        XFree(work_area_size);
+        return;
+    }
     int work_area_width = work_area_size[0] + work_area_size[2];
     int work_area_height = work_area_size[1] + work_area_size[3];
     XFree(work_area_size);
+
+    if (work_area_width <= 0 || work_area_height <= 0)
+        return;
 
     long *x_screen_size =
         server_get_property(server.root_win, server.atom._NET_DESKTOP_GEOMETRY, XA_CARDINAL, &num_results);
     if (!x_screen_size)
         return;
+    if (num_results < 2) {
+        XFree(x_screen_size);
+        return;
+    }
     int x_screen_width = x_screen_size[0];
     int x_screen_height = x_screen_size[1];
     XFree(x_screen_size);
@@ -533,6 +545,10 @@ int get_current_desktop()
     long *work_area_size = server_get_property(server.root_win, server.atom._NET_WORKAREA, XA_CARDINAL, &num_results);
     if (!work_area_size)
         return 0;
+    if (num_results < 4) {
+        XFree(work_area_size);
+        return 0;
+    }
     int work_area_width = work_area_size[0] + work_area_size[2];
     int work_area_height = work_area_size[1] + work_area_size[3];
     XFree(work_area_size);
@@ -543,6 +559,10 @@ int get_current_desktop()
     long *viewport = server_get_property(server.root_win, server.atom._NET_DESKTOP_VIEWPORT, XA_CARDINAL, &num_results);
     if (!viewport)
         return 0;
+    if (num_results < 2) {
+        XFree(viewport);
+        return 0;
+    }
     int viewport_x = viewport[0];
     int viewport_y = viewport[1];
     XFree(viewport);
@@ -551,6 +571,10 @@ int get_current_desktop()
         server_get_property(server.root_win, server.atom._NET_DESKTOP_GEOMETRY, XA_CARDINAL, &num_results);
     if (!x_screen_size)
         return 0;
+    if (num_results < 1) {
+        XFree(x_screen_size);
+        return 0;
+    }
     int x_screen_width = x_screen_size[0];
     XFree(x_screen_size);
 

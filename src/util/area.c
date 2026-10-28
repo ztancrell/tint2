@@ -271,6 +271,7 @@ int relayout_with_constraint(Area *a, int maximum_size)
         }
         if (fixed_children_count + dynamic_children_count > 0)
             size -= (fixed_children_count + dynamic_children_count - 1) * a->paddingx;
+        size = MAX(0, size);
 
         int width = 0;
         int modulo = 0;
@@ -311,6 +312,7 @@ int relayout_with_constraint(Area *a, int maximum_size)
         }
         if (fixed_children_count + dynamic_children_count > 0)
             size -= (fixed_children_count + dynamic_children_count - 1) * a->paddingx;
+        size = MAX(0, size);
 
         int height = 0;
         int modulo = 0;
@@ -341,21 +343,28 @@ int relayout_with_constraint(Area *a, int maximum_size)
     return 0;
 }
 
+// Frees the cached pixmaps of all mouse states and the current one
+static void free_area_pixmaps(Area *a)
+{
+    for (int i = 0; i < MOUSE_STATE_COUNT; i++) {
+        if (a->pix_by_state[i])
+            XFreePixmap(server.display, a->pix_by_state[i]);
+        if (a->pix == a->pix_by_state[i])
+            a->pix = None;
+        a->pix_by_state[i] = None;
+    }
+    if (a->pix) {
+        XFreePixmap(server.display, a->pix);
+        a->pix = None;
+    }
+}
+
 void schedule_redraw(Area *a)
 {
     a->_redraw_needed = TRUE;
 
     if (a->has_mouse_over_effect) {
-        for (int i = 0; i < MOUSE_STATE_COUNT; i++) {
-            XFreePixmap(server.display, a->pix_by_state[i]);
-            if (a->pix == a->pix_by_state[i])
-                a->pix = None;
-            a->pix_by_state[i] = None;
-        }
-        if (a->pix) {
-            XFreePixmap(server.display, a->pix);
-            a->pix = None;
-        }
+        free_area_pixmaps(a);
     }
 
     for (GList *l = a->children; l; l = l->next)
@@ -384,7 +393,7 @@ void draw_tree(Area *a)
                   a->height,
                   a->posx,
                   a->posy);
-    else
+    else if (a->width > 0 && a->height > 0)
         fprintf(stderr, RED "tint2: %s %d: area %s has no pixmap!!!" RESET "\n", __FILE__, __LINE__, a->name);
 
     for (GList *l = a->children; l; l = l->next)
@@ -439,26 +448,22 @@ void draw(Area *a)
 {
     if (a->_changed) {
         // On resize/move, invalidate cached pixmaps
-        for (int i = 0; i < MOUSE_STATE_COUNT; i++) {
-            XFreePixmap(server.display, a->pix_by_state[i]);
-            if (a->pix == a->pix_by_state[i]) {
-                a->pix = None;
-            }
-            a->pix_by_state[i] = None;
-        }
-        if (a->pix) {
-            XFreePixmap(server.display, a->pix);
-            a->pix = None;
-        }
+        free_area_pixmaps(a);
     }
 
+    int state = a->has_mouse_over_effect ? a->mouse_state : 0;
     if (a->pix) {
         XFreePixmap(server.display, a->pix);
-        if (a->pix_by_state[a->has_mouse_over_effect ? a->mouse_state : 0] != a->pix)
-            XFreePixmap(server.display, a->pix_by_state[a->has_mouse_over_effect ? a->mouse_state : 0]);
+        if (a->pix_by_state[state] && a->pix_by_state[state] != a->pix)
+            XFreePixmap(server.display, a->pix_by_state[state]);
     }
+    a->pix = None;
+    a->pix_by_state[state] = None;
+    // Nothing to draw, and a 0-sized pixmap is a BadValue
+    if (a->width <= 0 || a->height <= 0)
+        return;
     a->pix = XCreatePixmap(server.display, server.root_win, a->width, a->height, server.depth);
-    a->pix_by_state[a->has_mouse_over_effect ? a->mouse_state : 0] = a->pix;
+    a->pix_by_state[state] = a->pix;
 
     if (!a->_clear) {
         // Add layer of root pixmap (or clear pixmap if real_transparency==true)
@@ -627,17 +632,7 @@ void free_area(Area *a)
         g_list_free(a->children);
         a->children = NULL;
     }
-    for (int i = 0; i < MOUSE_STATE_COUNT; i++) {
-        XFreePixmap(server.display, a->pix_by_state[i]);
-        if (a->pix == a->pix_by_state[i]) {
-            a->pix = None;
-        }
-        a->pix_by_state[i] = None;
-    }
-    if (a->pix) {
-        XFreePixmap(server.display, a->pix);
-        a->pix = None;
-    }
+    free_area_pixmaps(a);
     if (mouse_over_area == a) {
         mouse_over_area = NULL;
     }
@@ -904,7 +899,7 @@ void area_compute_available_size(Area *area,
     Panel *panel = (Panel *)area->panel;
     if (panel_horizontal) {
         *available_w = panel->area.width;
-        *available_h = area->height - 2 * area->paddingy - left_right_border_width(area);
+        *available_h = area->height - 2 * area->paddingy - top_bottom_border_width(area);
     } else {
         *available_w = area->width - 2 * area->paddingxlr - left_right_border_width(area);
         *available_h = panel->area.height;
