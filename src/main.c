@@ -381,7 +381,9 @@ void handle_event_configure_notify(XEvent *e)
         }
     }
 
-    sort_taskbar_for_win(win);
+    // Only center sort depends on window geometry
+    if (taskbar_sort_method == TASKBAR_SORT_CENTER)
+        sort_taskbar_for_win(win);
 }
 
 gboolean handle_x_event_autohide(XEvent *e)
@@ -527,7 +529,7 @@ void handle_x_event(XEvent *e)
 
     case ClientMessage: {
         XClientMessageEvent *ev = &e->xclient;
-        if (ev->data.l[1] == server.atom._NET_WM_CM_S0) {
+        if (ev->data.l[1] == server.atom._NET_WM_CM_S0 && !server.disable_transparency) {
             if (ev->data.l[2] == None) {
                 // Stop real_transparency
                 emit_self_restart("compositor changed");
@@ -577,7 +579,7 @@ void handle_x_event(XEvent *e)
 
 void handle_x_events()
 {
-    if (XPending(server.display) > 0) {
+    while (XPending(server.display) > 0) {
         XEvent e;
         XNextEvent(server.display, &e);
         if (debug_fps)

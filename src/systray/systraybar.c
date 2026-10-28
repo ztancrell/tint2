@@ -870,8 +870,8 @@ gboolean embed_icon(TrayWindow *traywin)
     // Redirect rendering when using compositing
     if (systray_composited) {
         if (systray_profile)
-            fprintf(stderr, "tint2: XDamageCreate(server.display, traywin->parent, XDamageReportRawRectangles)\n");
-        traywin->damage = XDamageCreate(server.display, traywin->parent, XDamageReportRawRectangles);
+            fprintf(stderr, "tint2: XDamageCreate(server.display, traywin->parent, XDamageReportNonEmpty)\n");
+        traywin->damage = XDamageCreate(server.display, traywin->parent, XDamageReportNonEmpty);
         if (systray_profile)
             fprintf(stderr, "tint2: XCompositeRedirectWindow(server.display, traywin->parent, CompositeRedirectManual)\n");
         XCompositeRedirectWindow(server.display, traywin->parent, CompositeRedirectManual);
@@ -1394,6 +1394,9 @@ on_error:
             traywin->win,
             traywin->name,
             traywin->pid);
+    // NonEmpty damage only reports again once cleared
+    if (traywin->damage)
+        XDamageSubtract(server.display, traywin->damage, None, None);
     return;
 
 on_systray_error:

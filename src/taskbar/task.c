@@ -768,8 +768,8 @@ void set_task_state(Task *task, TaskState state)
                     if (taskbar->desktop != server.desktop)
                         hide = TRUE;
                 }
-                if (get_window_monitor(task->win) != ((Panel *)task->area.panel)->monitor &&
-                    (hide_task_diff_monitor || num_panels > 1)) {
+                if ((hide_task_diff_monitor || num_panels > 1) &&
+                    get_window_monitor(task->win) != ((Panel *)task->area.panel)->monitor) {
                     hide = TRUE;
                 }
                 if ((!hide) != task1->area.on_screen) {

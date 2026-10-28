@@ -518,9 +518,11 @@ void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
             launcherIcon->cwd = NULL;
         launcherIcon->start_in_terminal = entry.start_in_terminal;
         launcherIcon->startup_notification = entry.startup_notification;
-        if (launcherIcon->icon_name)
-            free(launcherIcon->icon_name);
+        char *old_icon_name = launcherIcon->icon_name;
         launcherIcon->icon_name = entry.icon ? strdup(entry.icon) : strdup(DEFAULT_ICON);
+        // Theme lookup and image load are costly; redo them only if the icon changed
+        gboolean icon_changed = !launcherIcon->image || !old_icon_name || strcmp(old_icon_name, launcherIcon->icon_name) != 0;
+        free(old_icon_name);
         g_free(launcherIcon->icon_tooltip);
         launcherIcon->icon_tooltip = NULL;
         if (entry.name) {
@@ -536,7 +538,8 @@ void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
                 launcherIcon->icon_tooltip = g_strdup_printf("%s", entry.exec);
             }
         }
-        launcher_reload_icon_image(launcher, launcherIcon);
+        if (icon_changed)
+            launcher_reload_icon_image(launcher, launcherIcon);
         show(&launcherIcon->area);
     } else {
         hide(&launcherIcon->area);
@@ -546,6 +549,12 @@ void launcher_reload_icon(Launcher *launcher, LauncherIcon *launcherIcon)
 
 void launcher_reload_hidden_icons(Launcher *launcher)
 {
+    // Each hidden item is a recursive scan of every applications dir; once a minute is plenty
+    static double last_scan;
+    double now = get_time();
+    if (last_scan && now - last_scan < 60)
+        return;
+    last_scan = now;
     for (GSList *l = launcher->list_icons; l; l = l->next) {
         LauncherIcon *launcherIcon = (LauncherIcon *)l->data;
         if (!launcherIcon->area.on_screen)

@@ -161,11 +161,34 @@ int ms_until_second_change(struct timeval* tm)
     return ms;
 }
 
+static gboolean format_has_seconds(const char *format)
+{
+    for (const char *p = format; p && (p = strchr(p, '%'));) {
+        p++;
+        while (*p == 'E' || *p == 'O')
+            p++;
+        if (!*p)
+            break;
+        if (strchr("sSTrXc+", *p))
+            return TRUE;
+        p++;
+    }
+    return FALSE;
+}
+
 void update_clocks_sec(void *arg)
 {
     gettimeofday(&time_clock, 0);
     update_clocks();
-    change_timer(&clock_timer, true, ms_until_second_change(&time_clock), 0, update_clocks_sec, 0);
+    int ms = ms_until_second_change(&time_clock);
+    if (!format_has_seconds(time1_format) && !format_has_seconds(time2_format) &&
+        !format_has_seconds(time_tooltip_format)) {
+        // Minute resolution is enough. ponytail: capped at 10 s because the select()
+        // timeout does not count suspend time, so a resumed clock is stale until it fires.
+        ms += (59 - time_clock.tv_sec % 60) * 1000;
+        ms = MIN(ms, 10000 + ms_until_second_change(&time_clock));
+    }
+    change_timer(&clock_timer, true, ms, 0, update_clocks_sec, 0);
 }
 
 void init_clock()

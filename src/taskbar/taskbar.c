@@ -799,7 +799,8 @@ void sort_taskbar_for_win(Window win)
     GPtrArray *task_buttons = get_task_buttons(win);
     if (task_buttons) {
         Task *task0 = g_ptr_array_index(task_buttons, 0);
-        if (task0) {
+        // Only center sort uses window geometry; skip the round-trips otherwise
+        if (task0 && taskbar_sort_method == TASKBAR_SORT_CENTER) {
             get_window_coordinates(win, &task0->win_x, &task0->win_y, &task0->win_w, &task0->win_h);
         }
         for (int i = 0; i < task_buttons->len; ++i) {

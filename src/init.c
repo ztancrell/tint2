@@ -145,8 +145,8 @@ void detect_compositor(void *arg)
 
 void start_detect_compositor()
 {
-    // Already have a compositor, nothing to do
-    if (server.composite_manager)
+    // Already have a compositor, or it would make no difference: nothing to do
+    if (server.composite_manager || server.disable_transparency)
         return;
 
     // Check every 0.5 seconds for up to 30 seconds
