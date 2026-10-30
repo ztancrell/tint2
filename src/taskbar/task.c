@@ -385,6 +385,18 @@ void task_update_icon(Task *task)
             task_set_icon_color(task, img);
             imlib_context_set_image(img);
             imlib_free_image();
+
+            // the content tint comes from the icon, so redraw every button
+            GPtrArray *task_buttons = get_task_buttons(task->win);
+            if (task_buttons) {
+                for (int i = 0; i < task_buttons->len; ++i) {
+                    Task *task2 = (Task *)g_ptr_array_index(task_buttons, i);
+                    task2->icon_color = task->icon_color;
+                    task2->icon_color_hover = task->icon_color_hover;
+                    task2->icon_color_press = task->icon_color_press;
+                    schedule_redraw(&task2->area);
+                }
+            }
         }
         return;
     }
